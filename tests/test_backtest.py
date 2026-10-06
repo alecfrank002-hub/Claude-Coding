@@ -144,3 +144,32 @@ def test_market_off_sells_losers_keeps_winners():
     _, _, h = run_rotation(prices, bench, settings, market=market)
     assert h["WIN"].iloc[-1] > 0
     assert h["LOSE"].iloc[-1] == 0
+
+
+def test_split_factor_restores_traded_price():
+    from trading.universe import split_factor
+
+    idx = pd.bdate_range("2024-06-05", periods=5)
+    splits = pd.Series([0, 0, 10, 0, 0], index=idx, dtype=float)  # 10-for-1 split on day 3
+    f = split_factor(splits)
+    assert f.tolist() == [10, 10, 1, 1, 1]  # days before the split traded at 10x the adjusted price
+
+
+def test_leader_screen_checks_each_rule():
+    from trading.universe import leader_screen
+
+    idx = pd.bdate_range("2024-01-01", periods=60)
+    base = dict(close=50.0, high=53.0, low=50.0, shares=15e6)  # ADR 6%, $750M a day
+    def panel(**over):
+        v = base | over
+        return {
+            "close": pd.DataFrame({"X": v["close"]}, index=idx),
+            "high": pd.DataFrame({"X": v["high"]}, index=idx),
+            "low": pd.DataFrame({"X": v["low"]}, index=idx),
+            "shares": pd.DataFrame({"X": v["shares"]}, index=idx),
+            "dollars": pd.DataFrame({"X": v["close"] * v["shares"]}, index=idx),
+        }
+    assert leader_screen(panel())["X"].iloc[-1]
+    assert not leader_screen(panel(high=51.0))["X"].iloc[-1]  # ADR 2%: too slow
+    assert not leader_screen(panel(shares=5e6))["X"].iloc[-1]  # $250M a day: too thin
+    assert not leader_screen(panel(close=8.0, high=8.48, low=8.0, shares=100e6))["X"].iloc[-1]  # under $10

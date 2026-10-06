@@ -63,7 +63,8 @@ def market_on(market, window=50, days=3):
     return (streak < days).all(axis=1)
 
 
-def run_rotation(prices, benchmark, settings=Settings(), cash_rate=None, start=None, market=None, exposure=None):
+def run_rotation(prices, benchmark, settings=Settings(), cash_rate=None, start=None, market=None, exposure=None,
+                 universe=None, rs=None):
     """Backtest the rotation strategy from `start`. `prices` has one column per ticker.
 
     Pass full price history: indicators are computed on all of it, so they're
@@ -71,6 +72,9 @@ def run_rotation(prices, benchmark, settings=Settings(), cash_rate=None, start=N
     of index closes (e.g. SPY and QQQ) used when `settings.market_filter` is on.
     `exposure` is an optional daily series from 0 to 1: the share of slots that may
     be filled. When it drops, the weakest holdings are sold to fit.
+    `universe` is an optional True/False DataFrame (e.g. a daily scan): only names
+    passing it that day can be bought. Holdings are kept even if they later fail
+    it. `rs` optionally supplies RS ratings (e.g. ranked against the whole market).
     """
     s = settings
     prices = prices.reindex(benchmark.index)
@@ -79,7 +83,7 @@ def run_rotation(prices, benchmark, settings=Settings(), cash_rate=None, start=N
     exit_line = {"sma": avg, "ema20": ema(prices, 20), "ema10": ema(prices, 10)}[s.exit_ma]
     below_streak = (prices < exit_line).apply(_streak)  # closes in a row below the exit average
     if s.rank_by == "rs_rating":
-        rs = rs_rating(prices)
+        rs = rs_rating(prices) if rs is None else rs.reindex(index=benchmark.index, columns=prices.columns)
         eligible = (prices > avg) & (rs >= max(s.min_rs_rating, 1))
     else:
         rs = relative_strength(prices, benchmark, s.rs_lookback)
@@ -90,6 +94,8 @@ def run_rotation(prices, benchmark, settings=Settings(), cash_rate=None, start=N
         eligible &= stacked(prices)
     if s.entry == "pullback":
         eligible &= (prices / ema(prices, 20) - 1).abs() <= 0.03
+    if universe is not None:
+        eligible &= universe.reindex(index=benchmark.index, columns=prices.columns).fillna(False).astype(bool)
     rs_rank = rs.rank(axis=1, ascending=False)
     allowed = np.full(len(benchmark), s.slots) if exposure is None else \
         np.round(exposure.reindex(benchmark.index).ffill().fillna(1.0).to_numpy() * s.slots).astype(int)

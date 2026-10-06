@@ -70,6 +70,19 @@ entry price) are sold; winners are kept. `market_sell` can be set to `"all"` or
 equal-weight hold of the same basket. Settings live in `trading/portfolio.py`
 (`Settings`); baskets live in `trading/baskets.py`.
 
+## Swing-trading research
+
+See `STRATEGY.md` for the trader's rules and the findings.
+
+```bash
+python research_environment.py   # SPY/QQQ returns under MA, extension and breadth conditions; exposure rules
+python research_stocks.py        # forward returns by RS rating, MA stack, pullback and market regime
+python research_portfolio.py     # RS-rating rotation combined with market exposure rules
+```
+
+`trading/indicators.py` has the 10/20 EMA, 50/100/200 SMA, an IBD-style RS rating
+(1-99, ranked within the basket), MA score/stack and breadth.
+
 ## How the backtest works
 
 - Prices are split- and dividend-adjusted daily closes from Yahoo Finance, cached in `data/`.
@@ -89,6 +102,9 @@ equal-weight hold of the same basket. Settings live in `trading/portfolio.py`
 | `rotation.py` | Relative-strength rotation across baskets |
 | `trading/portfolio.py` | Rotation engine and equal-weight benchmark |
 | `trading/baskets.py` | Ticker baskets |
+| `trading/indicators.py` | EMAs/SMAs, RS rating, MA score, breadth |
+| `research_*.py` | Environment, stock-setup and combined-system studies |
+| `STRATEGY.md` | The trader's rules and findings |
 | `trading/strategy.py` | Trading rules and the `RULES` list |
 | `trading/backtest.py` | Backtest engine, trade list, performance stats |
 | `trading/report.py` | Text summary and charts |

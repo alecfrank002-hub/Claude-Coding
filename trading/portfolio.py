@@ -23,6 +23,7 @@ import numpy as np
 import pandas as pd
 
 from .backtest import TRADING_DAYS, _stats
+from .indicators import ema, rs_rating, stacked
 from .strategy import sma
 
 
@@ -36,6 +37,10 @@ class Settings:
     market_filter: bool = False  # SPY/QQQ 50-day gate, see module docstring
     market_sell: str = "losers"  # when the market is off, sell: "losers", "all" or "none"
     market_days: int = 3  # closes in a row below the 50-day that turn the market off
+    rank_by: str = "rs_vs_bench"  # "rs_vs_bench" (3-month return minus benchmark) or "rs_rating" (1-99)
+    min_rs_rating: float = 0  # with rank_by="rs_rating": only buy names rated at least this
+    entry: str = "above_ma"  # "above_ma", "stacked" (10e>20e>50>100>200) or "pullback" (stacked, within 3% of 20 EMA)
+    exit_ma: str = "sma"  # average for the N-closes-below exit: "sma" (uses window), "ema20" or "ema10"
     cost_bps: float = 5.0
 
 
@@ -58,23 +63,36 @@ def market_on(market, window=50, days=3):
     return (streak < days).all(axis=1)
 
 
-def run_rotation(prices, benchmark, settings=Settings(), cash_rate=None, start=None, market=None):
+def run_rotation(prices, benchmark, settings=Settings(), cash_rate=None, start=None, market=None, exposure=None):
     """Backtest the rotation strategy from `start`. `prices` has one column per ticker.
 
     Pass full price history: indicators are computed on all of it, so they're
     ready on day one instead of needing a warm-up period. `market` is a DataFrame
     of index closes (e.g. SPY and QQQ) used when `settings.market_filter` is on.
+    `exposure` is an optional daily series from 0 to 1: the share of slots that may
+    be filled. When it drops, the weakest holdings are sold to fit.
     """
     s = settings
     prices = prices.reindex(benchmark.index)
 
     avg = sma(prices, s.window)
-    below_streak = (prices < avg).apply(_streak)  # closes in a row below the SMA
-    rs = relative_strength(prices, benchmark, s.rs_lookback)
-    eligible = (prices > avg) & rs.notna()
-    if s.require_rs:
-        eligible &= rs > 0
+    exit_line = {"sma": avg, "ema20": ema(prices, 20), "ema10": ema(prices, 10)}[s.exit_ma]
+    below_streak = (prices < exit_line).apply(_streak)  # closes in a row below the exit average
+    if s.rank_by == "rs_rating":
+        rs = rs_rating(prices)
+        eligible = (prices > avg) & (rs >= max(s.min_rs_rating, 1))
+    else:
+        rs = relative_strength(prices, benchmark, s.rs_lookback)
+        eligible = (prices > avg) & rs.notna()
+        if s.require_rs:
+            eligible &= rs > 0
+    if s.entry in ("stacked", "pullback"):
+        eligible &= stacked(prices)
+    if s.entry == "pullback":
+        eligible &= (prices / ema(prices, 20) - 1).abs() <= 0.03
     rs_rank = rs.rank(axis=1, ascending=False)
+    allowed = np.full(len(benchmark), s.slots) if exposure is None else \
+        np.round(exposure.reindex(benchmark.index).ffill().fillna(1.0).to_numpy() * s.slots).astype(int)
 
     if s.market_filter:
         market_ok = market_on(market.reindex(benchmark.index).ffill(), s.window, s.market_days).to_numpy()
@@ -84,7 +102,7 @@ def run_rotation(prices, benchmark, settings=Settings(), cash_rate=None, start=N
     keep = benchmark.index >= pd.Timestamp(start or benchmark.index[0])
     benchmark, prices = benchmark[keep], prices[keep]
     eligible, below_streak, rs, rs_rank = (x[keep] for x in (eligible, below_streak, rs, rs_rank))
-    market_ok = market_ok[keep]
+    market_ok, allowed = market_ok[keep], allowed[keep]
     n_days, n_names = prices.shape
 
     week = benchmark.index.to_period("W")
@@ -123,13 +141,17 @@ def run_rotation(prices, benchmark, settings=Settings(), cash_rate=None, start=N
                 sell |= held
             elif s.market_sell == "losers":
                 sell |= held & (px[t] < entry_px)
+        extra = int((held & ~sell).sum()) - allowed[t]
+        if extra > 0:  # exposure dropped: sell the weakest remaining holdings
+            keepers = np.where(held & ~sell)[0]
+            sell[keepers[np.argsort(score[t][keepers])][:extra]] = True
         if sell.any():
             cash += w[sell].sum() * (1 - cost)
             traded += w[sell].sum()
             w[sell] = 0.0
 
         # Then fill empty slots with the strongest qualifying names.
-        open_slots = s.slots - int((w > 0).sum())
+        open_slots = allowed[t] - int((w > 0).sum())
         if open_slots > 0 and market_ok[t]:
             candidates = np.where(elig[t] & (w == 0))[0]
             for i in candidates[np.argsort(-score[t][candidates])][:open_slots]:

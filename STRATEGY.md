@@ -19,6 +19,7 @@ Update it whenever a rule is added, changed, or tested.
 | Rotation | Rotate out of weakening names (losing the 50 SMA) into the strongest | `run_rotation` |
 | Market gate | Only open new positions while SPY and QQQ both have fewer than 3 closes in a row below their 50 SMA; otherwise buy nothing and sell losers (below entry price) | `market_filter=True`, `market_sell="losers"` |
 | Watched averages | 10 EMA, 20 EMA, 50 SMA, 100 SMA, 200 SMA | `trading/indicators.py` |
+| Leader scan | Market cap $1B+, price $10+, 2M+ shares/day, $600M+ dollar volume/day, ADR 5–8% | `trading/universe.py` `leader_screen()` |
 
 ## What the backtests found (Oct 2026)
 
@@ -71,9 +72,40 @@ Exits: 3 closes under the 50 SMA beat 3 under the 20 EMA (slightly) and the 10 E
 (clearly) for this holding-period style. Requiring a full MA stack lowered drawdown
 but also returns; waiting for a pullback to the 20 EMA hurt returns.
 
+### The leader scan (`research_leaders.py`, whole US market, Oct 2026)
+The scan is applied point-in-time to all ~6,200 Yahoo-listed US stocks (splits undone
+so price/share filters use the price as traded). RS ratings are ranked against the
+whole market, like IBD. Delisted stocks are missing from Yahoo, so failed names
+(e.g. 2021 SPACs) are absent and results are flattered.
+
+- **$600M+ dollar volume is very strict:** 0–3 names pass on a typical day before 2020,
+  ~15 in 2020–22, ~34 in 2026. Full-period portfolio results are mostly cash; judge
+  it on 2020+ or use $200M (~16/day since 2006, ~36/day since 2020).
+- **The scan alone is not an edge.** Holding every passer lost money (−95% to −98%
+  drawdowns): ADR 5–8% also catches collapsing stocks. RS and trend do the work.
+- **RS 90+ (vs whole market) is the sweet spot:** +3.5% vs SPY per 20 days, against ≈0
+  for RS 50–79. Stacked MAs helped (+3.5% vs +2.1%).
+- **Don't fear extension in leaders:** in SPY uptrends, RS 70+ passers 20–35%+ above the
+  50 SMA or 10–20%+ above the 20 EMA did *better* over 20 days than ones near the
+  averages. More than 5% *under* the 20 EMA was the weak spot (−1.7% vs SPY).
+- **SPY-based market rules fail for this group.** From Feb 2021 to Oct 2023 the portfolio
+  fell 53% while SPY rose 11%: high-ADR growth crashed with SPY above its 200 SMA.
+- **Measure the environment on the leaders themselves** (`leader_environment()`: an
+  equal-weight index and breadth of stocks with $100M+/day and ADR 4%+):
+  - Leader index 10 EMA > 20 EMA as the in/out switch cut max drawdown from −53% to −29%
+    *and* raised return.
+  - Best overall: **RS 90+, all MAs stacked, top 10, exit 3 closes < 50 SMA, 100% invested
+    when the leader index is above its 50 SMA, 50% when only leader breadth > 40%, else
+    cash.** $200M scan: 37.6% CAGR / −32% max DD / Sharpe 1.27 since 2020 (QQQ 21.2% /
+    −35% / 0.90); 12.7% / −32% / 0.80 since 2006. $600M scan since 2020: 22.4% / −26% / 1.00.
+- The 3-closes-under-50 exit vs 20 EMA exit was close; the 20 EMA exit did slightly better
+  on the $200M scan since 2020 (40.7% vs 38.0% with the breadth rule).
+
 ## Open questions / next tests
 - Trader's own entry triggers and exits (to come).
-- Bigger, survivorship-free universe (historical index members) for RS ranking.
+- Confirm the intended dollar-volume threshold ($600M as stated, or lower).
+- Per-trade stops sized off ADR (high-ADR names need them; portfolio drawdowns are still ~30%).
+- Survivorship-free data (delisted stocks) for the scan.
 - Position sizing by volatility; leverage only in the "in" environment.
 - Stops and profit targets at the trade level (these backtests use rule exits only).
 - Intraday/options behavior can't be tested with daily data; needs intraday data.

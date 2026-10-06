@@ -78,6 +78,9 @@ See `STRATEGY.md` for the trader's rules and the findings.
 python research_environment.py   # SPY/QQQ returns under MA, extension and breadth conditions; exposure rules
 python research_stocks.py        # forward returns by RS rating, MA stack, pullback and market regime
 python research_portfolio.py     # RS-rating rotation combined with market exposure rules
+python -m trading.universe       # one-time: download the whole US market (~15 min, ~800MB in data/universe/)
+python research_leaders.py       # the leader scan: scan stats, setups and portfolio tests ($600M dollar volume)
+python research_leaders.py 200   # same with $200M+ dollar volume
 ```
 
 `trading/indicators.py` has the 10/20 EMA, 50/100/200 SMA, an IBD-style RS rating
@@ -103,6 +106,7 @@ python research_portfolio.py     # RS-rating rotation combined with market expos
 | `trading/portfolio.py` | Rotation engine and equal-weight benchmark |
 | `trading/baskets.py` | Ticker baskets |
 | `trading/indicators.py` | EMAs/SMAs, RS rating, MA score, breadth |
+| `trading/universe.py` | Whole-market download, leader scan, market-wide RS rating, leader environment |
 | `research_*.py` | Environment, stock-setup and combined-system studies |
 | `STRATEGY.md` | The trader's rules and findings |
 | `trading/strategy.py` | Trading rules and the `RULES` list |

@@ -6,7 +6,8 @@ RS ratings are ranked against the whole US market (~6,000 stocks), like IBD.
 
 Run `python -m trading.universe` once first to download the market (~1 hour).
 
-    python research_leaders.py
+    python research_leaders.py          # the scan as specified ($600M+ dollar volume)
+    python research_leaders.py 200      # same scan with $200M+ dollar volume
 """
 
 import numpy as np
@@ -19,7 +20,8 @@ from trading.backtest import _stats
 from trading.indicators import ema, stacked
 from trading.portfolio import Settings, run_rotation
 from trading.strategy import sma
-from trading.universe import leader_screen, load, rs_rating_market, symbols
+from trading.indicators import ema as _ema
+from trading.universe import leader_environment, leader_screen, load, rs_rating_market, symbols
 
 START = "2006-01-01"
 
@@ -75,11 +77,24 @@ def setup_study(panels, rs, scan, spy):
     table(up, "stacked", "RS 70+, above 50, SPY uptrend: all MAs stacked?")
 
 
+def leader_rules(panels, index):
+    """Market rules measured on the leader group instead of SPY."""
+    li, lb = leader_environment(panels)
+    above50 = li > sma(li, 50)
+    return {
+        "leader index 10 EMA > 20 EMA": (_ema(li, 10) > _ema(li, 20)).astype(float),
+        "leader breadth > 40% above 50d": (lb > 0.4).astype(float),
+        "leader idx > 50 SMA 100%, else breadth > 40% 50%": pd.Series(np.select([above50, lb > 0.4], [1.0, 0.5], 0.0), index=index),
+    }
+
+
 def portfolio_tests(panels, rs, scan, spy, qqq, cash):
     adj = panels["adj"]
     market = pd.DataFrame({"SPY": spy, "QQQ": qqq})
     env = {k: pd.Series(v, index=spy.index, dtype=float) for k, v in exposure_rules(spy, qqq, pd.Series(0.5, index=spy.index)).items()}
     slow = env["In unless below 200 SMA AND 50 SMA falling"]
+    lead = leader_rules(panels, spy.index)
+    best = Settings(slots=10, rank_by="rs_rating", min_rs_rating=90, entry="stacked")
     base = dict(slots=10, rank_by="rs_rating", min_rs_rating=70)
     tests = [
         ("RS 70+, above 50, exit 3 < 50 SMA, no market rule", Settings(**base), None),
@@ -94,6 +109,9 @@ def portfolio_tests(panels, rs, scan, spy, qqq, cash):
         ("Slow rule, RS 90+", Settings(**base | {"min_rs_rating": 90}), slow),
         ("Slow rule, top 5", Settings(**base | {"slots": 5}), slow),
         ("Slow rule, top 20", Settings(**base | {"slots": 20}), slow),
+        ("RS 70+, exit 3 < 50, leader idx 10 EMA > 20 EMA", Settings(**base), lead["leader index 10 EMA > 20 EMA"]),
+        ("RS 70+, exit 3 < 20 EMA, leader breadth > 40%", Settings(**base, exit_ma="ema20"), lead["leader breadth > 40% above 50d"]),
+        ("RS 90+ stacked, leader idx/breadth scaled", best, lead["leader idx > 50 SMA 100%, else breadth > 40% 50%"]),
     ]
     idx = spy.loc[START:].index
     nxt = adj.pct_change().shift(-1)
@@ -122,7 +140,7 @@ def portfolio_tests(panels, rs, scan, spy, qqq, cash):
     print(f"\nHolding today (RS 70+, above 50, slow market rule): {', '.join(last[last > 0].sort_values(ascending=False).index)}")
 
 
-def main():
+def main(min_dollars=600e6):
     all_adj, panels = load()
     spy = data.download("SPY", "1998-01-01")
     qqq = data.download("QQQ", "1998-01-01")
@@ -132,7 +150,7 @@ def main():
     all_adj = all_adj.reindex(idx)
     spy, qqq = spy.reindex(idx), qqq.reindex(idx)
 
-    scan = leader_screen(panels)
+    scan = leader_screen(panels, min_dollars=min_dollars)
     rs = rs_rating_market(all_adj, panels["adj"].columns)
     sectors = symbols()["sector"].to_dict()
     print(f"Universe: {all_adj.shape[1]:,} US stocks downloaded, {panels['adj'].shape[1]:,} ever liquid (> $50M/day)\n")
@@ -142,4 +160,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+
+    main(float(sys.argv[1]) * 1e6 if len(sys.argv) > 1 else 600e6)  # e.g. `python research_leaders.py 200` for $200M

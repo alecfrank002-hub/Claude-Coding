@@ -154,3 +154,22 @@ def rs_rating_market(all_adj, columns, min_price_adj=1.0):
 
 if __name__ == "__main__":
     build()
+
+
+def leader_environment(panels, min_dollars=100e6, min_adr=4, min_price=10):
+    """Health of the fast, liquid leader group itself, which can diverge from SPY.
+
+    The group each day = stocks trading $100M+/day with ADR 4%+ and price $10+.
+    Returns (leader_index, leader_breadth): an equal-weight index of the group
+    (rebalanced daily) and the share of the group closing above its 50 SMA.
+    In 2021-23 SPY was up while this group fell more than 50%.
+    """
+    from .strategy import sma
+
+    dv = panels["dollars"].rolling(50, min_periods=50).mean()
+    group = ((dv >= min_dollars) & (adr_pct(panels["high"], panels["low"]) >= min_adr)
+             & (panels["close"] >= min_price)).astype(bool)
+    adj = panels["adj"]
+    breadth = ((adj > sma(adj, 50)) & group).sum(axis=1) / group.sum(axis=1).replace(0, np.nan)
+    daily = adj.pct_change().where(group.shift(1, fill_value=False)).mean(axis=1).fillna(0)
+    return (1 + daily).cumprod().rename("LeaderIndex"), breadth.rename("LeaderBreadth")

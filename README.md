@@ -82,6 +82,8 @@ python -m trading.universe       # one-time: download the whole US market (~15 m
 python research_leaders.py       # the leader scan: scan stats, setups and portfolio tests ($600M dollar volume)
 python research_leaders.py 200   # same with $200M+ dollar volume
 python plot_leader_index.py      # chart the leader index, breadth and environment (last 18 months; pass a start date for more)
+python research_risk.py          # build/test the risk-on/off gauge (train 2008-18, test 2019+)
+python plot_risk_gauge.py        # daily risk gauge chart + checklist -> charts/risk_gauge.png
 ```
 
 `trading/indicators.py` has the 10/20 EMA, 50/100/200 SMA, an IBD-style RS rating
@@ -107,6 +109,7 @@ python plot_leader_index.py      # chart the leader index, breadth and environme
 | `trading/portfolio.py` | Rotation engine and equal-weight benchmark |
 | `trading/baskets.py` | Ticker baskets |
 | `trading/indicators.py` | EMAs/SMAs, RS rating, MA score, breadth |
+| `trading/risk.py` | Risk gauge components (incl. weekly MACD, VIX, credit, breadth) and the leader gauge |
 | `trading/universe.py` | Whole-market download, leader scan, market-wide RS rating, leader environment |
 | `research_*.py` | Environment, stock-setup and combined-system studies |
 | `STRATEGY.md` | The trader's rules and findings |

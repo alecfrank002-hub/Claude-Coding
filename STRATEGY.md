@@ -19,6 +19,7 @@ Update it whenever a rule is added, changed, or tested.
 | Rotation | Rotate out of weakening names (losing the 50 SMA) into the strongest | `run_rotation` |
 | Market gate | Only open new positions while SPY and QQQ both have fewer than 3 closes in a row below their 50 SMA; otherwise buy nothing and sell losers (below entry price) | `market_filter=True`, `market_sell="losers"` |
 | Watched averages | 10 EMA, 20 EMA, 50 SMA, 100 SMA, 200 SMA | `trading/indicators.py` |
+| Weekly MACD idea | SPY & QQQ weekly MACD both crossing bearish = heightened risk; both bullish = easier environment (tested below: context only) | `trading/risk.py` `weekly_macd_state()` |
 | Leader scan | Market cap $1B+, price $10+, 2M+ shares/day, $600M+ dollar volume/day, ADR 5–8% | `trading/universe.py` `leader_screen()` |
 
 ## What the backtests found (Oct 2026)
@@ -101,9 +102,31 @@ whole market, like IBD. Delisted stocks are missing from Yahoo, so failed names
 - The 3-closes-under-50 exit vs 20 EMA exit was close; the 20 EMA exit did slightly better
   on the $200M scan since 2020 (40.7% vs 38.0% with the breadth rule).
 
+### Risk-on / risk-off gauge (`research_risk.py`, `plot_risk_gauge.py`)
+13 components, each 1 / 0.5 / 0 at the close: leader index > 50 SMA, leader index
+10 > 20 EMA, leader breadth > 50%, breakout success (new 20-day highs still higher
+10 days later) > 50%, % of stocks above 50 SMA > 50%, net new 52-week highs > 0,
+weekly MACD SPY & QQQ, QQQ distribution days <= 4 in 25, SPY not > 8% above its
+50 SMA, VIX below its 50-day average, VIX < VIX3M, HYG/IEF and XLY/XLP above their
+50 SMA. Tuned on 2008-18, judged on 2019-26 (unseen).
+
+- **Combining all of them failed out of sample.** Components picked on 2008-18 (credit,
+  VIX, XLY/XLP, weekly MACD, net new highs) worked in the GFC era and hurt in 2019-26.
+  The combined gauge's test Sharpe on the leader index (0.44) was *below* always invested (0.52).
+- **The leader signals worked in both periods.** The 3-signal **leader gauge** (leader index
+  > 50 SMA, 10 EMA > 20 EMA, leader breadth > 50%; 3 on = 100%, 1-2 = 50%, 0 = cash):
+  leader index max drawdown −62% → −32% (train) and −66% → −43% (test), test Sharpe
+  0.52 → 0.72. QQQ test: Sharpe 1.03 vs 1.01 with drawdown −35% → −17%.
+  On the leader strategy 2019+: 27.5% / −27% / 1.09 vs 31.2% / −34% / 1.04 with no rule.
+- **Weekly MACD (SPY & QQQ) is too slow as a filter:** both bearish 39% of days, ~8 flips a
+  year. "In unless both bearish" cut leader-strategy returns from 31% to 21% (2019+) without
+  lowering drawdown; halving size when both are bearish was neutral. Keep it as context.
+- Like the earlier SPY studies: risk-off readings predicted higher **volatility** (40% vs 33%)
+  more than lower returns.
+
 ## Open questions / next tests
 - Trader's own entry triggers and exits (to come).
-- Confirm the intended dollar-volume threshold ($600M as stated, or lower).
+- Dollar volume: $200M recommended (best results); $500-600M as the intraday/options shortlist.
 - Per-trade stops sized off ADR (high-ADR names need them; portfolio drawdowns are still ~30%).
 - Survivorship-free data (delisted stocks) for the scan.
 - Position sizing by volatility; leverage only in the "in" environment.

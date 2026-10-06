@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -173,3 +174,41 @@ def test_leader_screen_checks_each_rule():
     assert not leader_screen(panel(high=51.0))["X"].iloc[-1]  # ADR 2%: too slow
     assert not leader_screen(panel(shares=5e6))["X"].iloc[-1]  # $250M a day: too thin
     assert not leader_screen(panel(close=8.0, high=8.48, low=8.0, shares=100e6))["X"].iloc[-1]  # under $10
+
+
+def test_weekly_macd_uses_completed_weeks_only():
+    from trading.risk import weekly_macd_state
+
+    idx = pd.bdate_range("2023-01-02", periods=400)
+    close = pd.Series(np.linspace(100, 200, 400), index=idx)  # steady rise
+    close.iloc[-3:] = 50  # crash in the final (incomplete) week
+    state = weekly_macd_state(close)
+    last_friday = idx[idx.weekday == 4][-1]
+    # Days after the last completed Friday still show that Friday's reading,
+    # not one that peeks at the unfinished week.
+    assert (state.loc[last_friday:] == state.loc[last_friday]).all()
+
+
+def test_distribution_day_needs_drop_and_higher_volume():
+    from trading.risk import distribution_days
+
+    idx = pd.bdate_range("2024-01-01", periods=4)
+    df = pd.DataFrame({"Close": [100, 99, 98.9, 97], "Volume": [10, 12, 15, 11]}, index=idx)
+    # Day 2: -1% on higher volume (counts). Day 3: -0.1% (too small). Day 4: lower volume.
+    assert distribution_days(df, window=4).iloc[-1] == 1
+
+
+def test_smooth_zone_has_buffers():
+    from trading.risk import smooth_zone
+
+    idx = pd.bdate_range("2024-01-01", periods=6)
+    z = smooth_zone(pd.Series([70, 70, 60, 58, 50, 30], index=idx, dtype=float), days=1)
+    # Enters Risk-On at 70, holds through 60 and 58 (buffer down to 55), drops at 50, off at 30.
+    assert z.tolist() == ["Risk-On", "Risk-On", "Risk-On", "Risk-On", "Neutral", "Risk-Off"]
+
+
+def test_leader_gauge_counts_signals():
+    from trading.risk import LEADER_SIGNALS, leader_gauge
+
+    comp = pd.DataFrame([[1, 1, 1], [1, 0, 1], [0, 0, 0]], columns=LEADER_SIGNALS, dtype=float)
+    assert leader_gauge(comp).tolist() == ["Risk-On", "Neutral", "Risk-Off"]

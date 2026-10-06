@@ -212,3 +212,13 @@ def test_leader_gauge_counts_signals():
 
     comp = pd.DataFrame([[1, 1, 1], [1, 0, 1], [0, 0, 0]], columns=LEADER_SIGNALS, dtype=float)
     assert leader_gauge(comp).tolist() == ["Risk-On", "Neutral", "Risk-Off"]
+
+
+def test_macd_risk_on_follows_trend():
+    from trading.risk import macd_risk_on
+
+    idx = pd.bdate_range("2020-01-01", periods=600)
+    up_then_down = np.r_[np.linspace(100, 200, 400), np.linspace(200, 120, 200)]
+    on = macd_risk_on(pd.Series(up_then_down, index=idx), mode="zero")
+    assert on.iloc[390] == True  # noqa: E712  long uptrend: risk on
+    assert on.iloc[-1] == False  # noqa: E712  months of decline: risk off

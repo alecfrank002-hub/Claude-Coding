@@ -38,6 +38,34 @@ def download_ohlcv(ticker, start="2004-01-01"):
     return df
 
 
+def weekly_macd(close, fast=6, slow=20, signal=9):
+    """Weekly MACD from completed weeks, mapped back onto daily dates.
+
+    Returns (line, signal_line): line = fast EMA - slow EMA of Friday closes.
+    Each week's values apply from that week's last trading day until the next
+    week completes, so a daily row never sees an unfinished week.
+    """
+    weekly = close.resample("W-FRI").last().dropna()
+    line = ema(weekly, fast) - ema(weekly, slow)
+    sig = line.ewm(span=signal, adjust=False, min_periods=signal).mean()
+
+    def to_daily(x):
+        return x.reindex(close.index.union(x.index)).ffill().reindex(close.index)
+
+    return to_daily(line), to_daily(sig)
+
+
+def macd_risk_on(close, fast=6, slow=20, signal=9, mode="zero"):
+    """The weekly MACD risk switch. True = risk on.
+
+    mode="zero":   previous week's fast EMA > slow EMA (MACD line above zero)
+    mode="signal": previous week's MACD line above its signal line
+    """
+    line, sig = weekly_macd(close, fast, slow, signal)
+    on = line > 0 if mode == "zero" else line > sig
+    return on.where(line.notna() & (sig.notna() if mode == "signal" else True))
+
+
 def weekly_macd_state(close, fast=12, slow=26, signal=9):
     """+1 when the weekly MACD line is above its signal line, -1 when below.
 

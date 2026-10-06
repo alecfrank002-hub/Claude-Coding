@@ -20,6 +20,7 @@ Update it whenever a rule is added, changed, or tested.
 | Market gate | Only open new positions while SPY and QQQ both have fewer than 3 closes in a row below their 50 SMA; otherwise buy nothing and sell losers (below entry price) | `market_filter=True`, `market_sell="losers"` |
 | Watched averages | 10 EMA, 20 EMA, 50 SMA, 100 SMA, 200 SMA | `trading/indicators.py` |
 | Weekly MACD idea | SPY & QQQ weekly MACD both crossing bearish = heightened risk; both bullish = easier environment (tested below: context only) | `trading/risk.py` `weekly_macd_state()` |
+| Weekly MACD (6,20,9) switch | Previous week's 6 EMA > 20 EMA (weekly) = risk on, < = risk off; after a down cross, wait for the first weekly close with a MACD up cross. Track breadth alongside. | `trading/risk.py` `macd_risk_on()`, `daily_dashboard.py` |
 | Leader scan | Market cap $1B+, price $10+, 2M+ shares/day, $600M+ dollar volume/day, ADR 5–8% | `trading/universe.py` `leader_screen()` |
 
 ## What the backtests found (Oct 2026)
@@ -123,6 +124,29 @@ weekly MACD SPY & QQQ, QQQ distribution days <= 4 in 25, SPY not > 8% above its
   lowering drawdown; halving size when both are bearish was neutral. Keep it as context.
 - Like the earlier SPY studies: risk-off readings predicted higher **volatility** (40% vs 33%)
   more than lower returns.
+
+### Weekly MACD (6,20,9) switch (`research_macd.py`)
+Rule A = previous week's 6 EMA > 20 EMA; Rule B = MACD line > its 9-week signal.
+Train 2008-18, test 2019-26; exposure 100% on / cash off.
+
+- **Excellent for timing the indexes.** Rule A on SPY AND QQQ, applied to QQQ: train
+  Sharpe 0.63 → 0.70 with max DD −49% → −28%; test Sharpe 1.01 → 1.09 with DD −35% → −20%.
+  Only ~2 changes a year, invested ~76% of the time. Simple and robust, as advertised.
+- **Not protective for leader-type stocks.** On the leader index, Rule A on SPY/QQQ did not
+  cut drawdowns (test −66% → −59%) and lowered Sharpe (0.52 → 0.41): high-ADR leaders topped
+  in Feb 2021 while SPY/QQQ MACD stayed bullish into 2022. On the leader strategy (2019+):
+  25.8% / −37% / 0.95 vs 31.2% / −34% / 1.04 always invested.
+- Rule B (MACD > signal) flips ~6-7 times a year. On SPY AND QQQ it gave the leader strategy
+  30.3% / −34% / Sharpe 1.39 (2019+), but it was poor on QQQ and the leader index in the same
+  period, so treat that result with suspicion.
+- Applying Rule A to the leader index itself worked in train (Sharpe 0.48, DD −44%) but not
+  in test (0.33, −50%).
+- The 3-signal leader gauge remains the best drawdown control for leaders (test DD −43% on the
+  leader index), but it flips ~32 times a year. That's too often to follow literally; a weekly
+  check or confirmation days would make it practical (to test).
+- **Suggested use:** weekly MACD (6,20) on SPY & QQQ as the master "season" switch (what
+  the index will let you do), with the leader index and leader breadth as the "are *my*
+  stocks working?" check.
 
 ## Open questions / next tests
 - Trader's own entry triggers and exits (to come).

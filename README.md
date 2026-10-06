@@ -84,6 +84,8 @@ python research_leaders.py 200   # same with $200M+ dollar volume
 python plot_leader_index.py      # chart the leader index, breadth and environment (last 18 months; pass a start date for more)
 python research_risk.py          # build/test the risk-on/off gauge (train 2008-18, test 2019+)
 python plot_risk_gauge.py        # daily risk gauge chart + checklist -> charts/risk_gauge.png
+python research_macd.py          # test the weekly MACD (6,20,9) risk switch
+python daily_dashboard.py        # one-screen dashboard: SPY/QQQ weekly MACD, leader index, breadth
 ```
 
 `trading/indicators.py` has the 10/20 EMA, 50/100/200 SMA, an IBD-style RS rating

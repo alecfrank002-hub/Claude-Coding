@@ -81,6 +81,7 @@ python research_portfolio.py     # RS-rating rotation combined with market expos
 python -m trading.universe       # one-time: download the whole US market (~15 min, ~800MB in data/universe/)
 python research_leaders.py       # the leader scan: scan stats, setups and portfolio tests ($600M dollar volume)
 python research_leaders.py 200   # same with $200M+ dollar volume
+python plot_leader_index.py      # chart the leader index, breadth and environment (last 18 months; pass a start date for more)
 ```
 
 `trading/indicators.py` has the 10/20 EMA, 50/100/200 SMA, an IBD-style RS rating

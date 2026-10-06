@@ -7,6 +7,11 @@ Every trading day, at the close:
   3. Fill any empty slots with the highest-RS names that qualify:
      above their 50-day SMA and beating the benchmark (RS > 0).
 
+Optional market filter: the market is "on" while every index in `market`
+(SPY and QQQ) has fewer than `market_days` closes in a row below its 50-day SMA.
+When the market is "off", no new positions are opened and losing positions
+(below their entry price) are sold. Winners are kept, still subject to step 1.
+
 Each slot gets 1/slots of the portfolio. Empty slots sit in cash and earn
 interest. Like the single-stock backtest, decisions made at today's close earn
 tomorrow's returns, and every buy and sell pays `cost_bps`.
@@ -28,7 +33,9 @@ class Settings:
     exit_days: int = 3  # closes in a row below the SMA before selling
     rs_lookback: int = 63  # relative strength period in trading days (~3 months)
     require_rs: bool = True  # only buy names beating the benchmark
-    market_filter: bool = False  # only hold stocks while the benchmark's 50d > 200d
+    market_filter: bool = False  # SPY/QQQ 50-day gate, see module docstring
+    market_sell: str = "losers"  # when the market is off, sell: "losers", "all" or "none"
+    market_days: int = 3  # closes in a row below the 50-day that turn the market off
     cost_bps: float = 5.0
 
 
@@ -45,11 +52,18 @@ def relative_strength(prices, benchmark, lookback=63):
     return stock_ret.sub(bench_ret, axis=0)
 
 
-def run_rotation(prices, benchmark, settings=Settings(), cash_rate=None, start=None):
+def market_on(market, window=50, days=3):
+    """True on days when every index has fewer than `days` closes in a row below its SMA."""
+    streak = (market < sma(market, window)).apply(_streak)
+    return (streak < days).all(axis=1)
+
+
+def run_rotation(prices, benchmark, settings=Settings(), cash_rate=None, start=None, market=None):
     """Backtest the rotation strategy from `start`. `prices` has one column per ticker.
 
     Pass full price history: indicators are computed on all of it, so they're
-    ready on day one instead of needing a warm-up period.
+    ready on day one instead of needing a warm-up period. `market` is a DataFrame
+    of index closes (e.g. SPY and QQQ) used when `settings.market_filter` is on.
     """
     s = settings
     prices = prices.reindex(benchmark.index)
@@ -63,7 +77,7 @@ def run_rotation(prices, benchmark, settings=Settings(), cash_rate=None, start=N
     rs_rank = rs.rank(axis=1, ascending=False)
 
     if s.market_filter:
-        market_ok = (sma(benchmark, 50) > sma(benchmark, 200)).to_numpy()
+        market_ok = market_on(market.reindex(benchmark.index).ffill(), s.window, s.market_days).to_numpy()
     else:
         market_ok = np.ones(len(benchmark), dtype=bool)
 
@@ -76,11 +90,13 @@ def run_rotation(prices, benchmark, settings=Settings(), cash_rate=None, start=N
     week = benchmark.index.to_period("W")
     weekly = np.append(week[1:] != week[:-1], True)
 
+    px = prices.to_numpy()
     rets = prices.pct_change().fillna(0.0).to_numpy()
     rate = np.zeros(n_days) if cash_rate is None else cash_rate.reindex(benchmark.index).ffill().fillna(0).to_numpy()
     elig, streak, score, rank = (x.to_numpy() for x in (eligible, below_streak, rs.fillna(-np.inf), rs_rank))
 
     w = np.zeros(n_names)  # fraction of the portfolio in each stock
+    entry_px = np.full(n_names, np.nan)  # price each holding was bought at
     cash = 1.0
     daily_ret = np.zeros(n_days)
     names_held = np.zeros(n_days)
@@ -103,7 +119,10 @@ def run_rotation(prices, benchmark, settings=Settings(), cash_rate=None, start=N
         if weekly[t]:
             sell |= held & (rank[t] > 2 * s.slots)
         if not market_ok[t]:
-            sell |= held
+            if s.market_sell == "all":
+                sell |= held
+            elif s.market_sell == "losers":
+                sell |= held & (px[t] < entry_px)
         if sell.any():
             cash += w[sell].sum() * (1 - cost)
             traded += w[sell].sum()
@@ -118,6 +137,7 @@ def run_rotation(prices, benchmark, settings=Settings(), cash_rate=None, start=N
                 if amount < 0.25 / s.slots:
                     break
                 w[i] = amount * (1 - cost)
+                entry_px[i] = px[t, i]
                 cash -= amount
                 traded += amount
 

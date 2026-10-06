@@ -60,7 +60,13 @@ Holds the top N names in a basket that are above their 50-day SMA and beating
 the market (return over the last 3 months minus SPY's or QQQ's). A holding is
 sold after **3 closes in a row below its 50-day**, or at the weekly check if its
 relative strength falls out of the basket's top 2N, and the slot rotates into
-the next strongest qualifying name. Results are compared with SPY, QQQ and an
+the next strongest qualifying name.
+
+**Market gate** (`market_filter=True`): new positions are opened only while SPY
+*and* QQQ both have fewer than 3 closes in a row below their 50-day. When
+either one reaches 3, nothing new is bought and losing positions (below their
+entry price) are sold; winners are kept. `market_sell` can be set to `"all"` or
+`"none"` to compare. Results are compared with SPY, QQQ and an
 equal-weight hold of the same basket. Settings live in `trading/portfolio.py`
 (`Settings`); baskets live in `trading/baskets.py`.
 

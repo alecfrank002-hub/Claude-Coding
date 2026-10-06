@@ -4,6 +4,9 @@ Hold the top N names in a basket that are above their 50-day SMA and beating
 the market (SPY or QQQ) over the last 3 months. Sell after 3 closes in a row
 below the 50-day, and rotate into the next strongest name.
 
+Market gate: open new positions only while SPY and QQQ both have fewer than 3
+closes in a row below their 50-day. Otherwise, buy nothing and sell losers.
+
 Examples:
     python rotation.py                      # every basket in trading/baskets.py
     python rotation.py sectors large_caps   # just these baskets
@@ -21,14 +24,17 @@ from trading.portfolio import Settings, equal_weight, run_rotation
 
 
 def variants(n_names):
+    """Strategies to compare, and the label of the main one."""
     small, big = (3, 5) if n_names < 15 else (5, 10)
-    return {
-        f"Top {small}, RS vs SPY, 3-close exit": ("SPY", Settings(slots=small)),
-        f"Top {big}, RS vs SPY, 3-close exit": ("SPY", Settings(slots=big)),
-        f"Top {big}, RS vs QQQ, 3-close exit": ("QQQ", Settings(slots=big)),
-        f"Top {big}, RS vs SPY, 1-close exit": ("SPY", Settings(slots=big, exit_days=1)),
-        f"Top {big}, RS vs SPY, 3-close, SPY trend filter": ("SPY", Settings(slots=big, market_filter=True)),
-        "All names above 50d, 3-close exit (no RS)": ("SPY", Settings(slots=n_names, require_rs=False)),
+    gate = dict(market_filter=True)
+    main = f"Top {big}, market gate, sell losers"
+    return main, {
+        f"Top {big}, no market gate": ("SPY", Settings(slots=big)),
+        main: ("SPY", Settings(slots=big, **gate)),
+        f"Top {big}, market gate, sell all": ("SPY", Settings(slots=big, **gate, market_sell="all")),
+        f"Top {big}, market gate, sell nothing": ("SPY", Settings(slots=big, **gate, market_sell="none")),
+        f"Top {small}, market gate, sell losers": ("SPY", Settings(slots=small, **gate)),
+        f"Top {big}, RS vs QQQ, market gate, sell losers": ("QQQ", Settings(slots=big, **gate)),
     }
 
 
@@ -52,11 +58,13 @@ def evaluate(name, cfg, cash):
     bench = {b: data.download(b, fetch) for b in ("SPY", "QQQ")}
     index = bench["SPY"].loc[cfg["start"]:].index
 
-    results, latest = {}, None
-    for label, (bname, settings) in variants(prices.shape[1]).items():
-        rets, metrics, holdings = run_rotation(prices, bench[bname], settings, cash, cfg["start"])
+    market = pd.DataFrame(bench)
+    main, strategies = variants(prices.shape[1])
+    results = {}
+    for label, (bname, settings) in strategies.items():
+        rets, metrics, holdings = run_rotation(prices, bench[bname], settings, cash, cfg["start"], market)
         results[label] = metrics | {"returns": rets}
-        if latest is None:
+        if label == main:
             latest = (label, holdings.iloc[-1])
     for b in ("SPY", "QQQ"):
         rets = bench[b].reindex(index).pct_change().fillna(0)

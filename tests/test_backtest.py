@@ -116,3 +116,31 @@ def test_rotation_picks_strongest_name():
     _, _, holdings = run_rotation(prices, bench, Settings(slots=1, window=3, rs_lookback=2, cost_bps=0))
     assert holdings["FAST"].iloc[-1] > 0
     assert holdings["SLOW"].iloc[-1] == 0
+
+
+def test_market_gate_needs_three_closes_below_on_either_index():
+    from trading.portfolio import market_on
+
+    idx = pd.bdate_range("2020-01-01", periods=10)
+    spy = pd.Series([100 + i for i in range(6)] + [90, 88, 86, 84], index=idx, dtype=float)
+    qqq = pd.Series([100 + i for i in range(10)], index=idx, dtype=float)
+    on = market_on(pd.DataFrame({"SPY": spy, "QQQ": qqq}), window=3, days=3)
+    assert on.iloc[6] and on.iloc[7]  # SPY one and two closes below: still on
+    assert not on.iloc[8]  # third close below: off
+
+
+def test_market_off_sells_losers_keeps_winners():
+    from trading.portfolio import Settings, run_rotation
+
+    idx = pd.bdate_range("2020-01-01", periods=8)
+    prices = pd.DataFrame({
+        "WIN": [100, 101, 102, 110, 120, 130, 140, 150],
+        "LOSE": [100, 101, 102, 103, 101, 99, 98, 97],
+    }, index=idx, dtype=float)
+    bench = pd.Series(100.0, index=idx)
+    market = pd.DataFrame({"SPY": [100, 101, 102, 103, 104, 50, 40, 30]}, index=idx, dtype=float)
+    # exit_days=99 turns off the stock exit, so only the market rule can sell.
+    settings = Settings(slots=2, window=2, rs_lookback=1, exit_days=99, cost_bps=0, market_filter=True)
+    _, _, h = run_rotation(prices, bench, settings, market=market)
+    assert h["WIN"].iloc[-1] > 0
+    assert h["LOSE"].iloc[-1] == 0

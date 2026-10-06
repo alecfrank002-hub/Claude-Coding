@@ -16,25 +16,32 @@ class Result:
     benchmark: dict  # buy-and-hold stats over the same period
 
 
-def run(close, position, cost_bps=5.0):
-    """Simulate trading `close` with `position` (1 = hold, 0 = cash).
+def run(close, position, cost_bps=5.0, cash_rate=None, borrow_spread=0.01):
+    """Simulate trading `close` with `position` (1 = hold, 0 = cash, 2 = 2x leverage).
 
     Signals are computed at the close and filled at that same close, so the
     position decided on day t earns the return from day t to day t+1.
     `cost_bps` is charged on every buy and every sell (5 bps = 0.05%).
+    `cash_rate` is an optional series of daily interest rates: uninvested money
+    earns it, and borrowed money (position above 1) pays it plus `borrow_spread`
+    per year.
     """
     df = pd.DataFrame({"Close": close, "Position": position}).dropna()
     df["Return"] = df["Close"].pct_change().fillna(0.0)
     held = df["Position"].shift(1).fillna(0)
     turnover = df["Position"].diff().abs().fillna(df["Position"].iloc[0])
-    df["StrategyReturn"] = held * df["Return"] - turnover * cost_bps / 10_000
+    rate = 0.0 if cash_rate is None else cash_rate.reindex(df.index).ffill().fillna(0.0)
+    cash = 1 - held  # negative when borrowing
+    financing = np.where(cash >= 0, cash * rate, cash * (rate + borrow_spread / TRADING_DAYS))
+    financing[0] = 0.0  # no time has passed on the first day
+    df["StrategyReturn"] = held * df["Return"] + financing - turnover * cost_bps / 10_000
     df["Equity"] = (1 + df["StrategyReturn"]).cumprod()
     df["BuyHold"] = (1 + df["Return"]).cumprod()
 
     trades = _trades(df)
     metrics = _stats(df["StrategyReturn"])
     metrics.update(
-        time_in_market=held.mean(),
+        time_in_market=(held > 0).mean(),
         trades=len(trades),
         win_rate=(trades["Return"] > 0).mean() if len(trades) else np.nan,
         avg_trade=trades["Return"].mean() if len(trades) else np.nan,
@@ -47,7 +54,7 @@ def _trades(df):
     pos = df["Position"].to_numpy()
     rows, entry = [], None
     for i in range(len(df)):
-        if pos[i] == 1 and entry is None:
+        if pos[i] > 0 and entry is None:
             entry = i
         elif pos[i] == 0 and entry is not None:
             rows.append(_trade_row(df, entry, i, closed=True))

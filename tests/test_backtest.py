@@ -51,3 +51,38 @@ def test_synthetic_runs_end_to_end():
     r = run(close, strategy.above_sma(close), cost_bps=5)
     assert 0 < r.metrics["time_in_market"] < 1
     assert r.daily["Equity"].notna().all()
+
+
+def test_buffer_ignores_small_dips():
+    # Price wiggles 1% under a flat average; a 2% buffer keeps holding.
+    close = prices([100] * 5 + [103, 99.5, 101, 99.2, 100.5])
+    plain = strategy.above_sma(close, 5)
+    buffered = strategy.sma_buffer(close, 5, 0.02)
+    assert plain.iloc[5:].tolist() != [1] * 5
+    assert buffered.iloc[5:].tolist() == [1] * 5
+
+
+def test_confirm_needs_consecutive_days():
+    close = prices([100] * 5 + [110, 90, 110, 111, 112])
+    pos = strategy.sma_confirm(close, 3, days=2)
+    assert pos.iloc[5:7].tolist() == [0, 0]  # one up day then a drop: no entry yet
+    assert pos.iloc[-1] == 1
+
+
+def test_cash_earns_interest_and_leverage_pays_it():
+    close = prices([100] * 3)
+    rate = pd.Series(0.001, index=close.index)
+    cash_only = run(close, pd.Series(0, index=close.index), cost_bps=0, cash_rate=rate)
+    assert cash_only.metrics["total_return"] == pytest.approx(1.001**2 - 1)
+    lev = run(close, pd.Series(2, index=close.index), cost_bps=0, cash_rate=rate, borrow_spread=0)
+    assert lev.daily["StrategyReturn"].iloc[1:].tolist() == pytest.approx([-0.001, -0.001])
+
+
+def test_all_rules_produce_valid_positions():
+    from trading.strategy import RULES
+
+    close = data.synthetic(days=600)
+    for name, rule in RULES.items():
+        pos = rule(close)
+        assert pos.index.equals(close.index), name
+        assert set(pos.unique()) <= {0, 1, 2}, name

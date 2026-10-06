@@ -47,6 +47,16 @@ def download(ticker, start, end=None, use_cache=True):
     return close
 
 
+def cash_rate(start, end=None):
+    """Daily interest earned on cash, from the 13-week US Treasury bill yield (^IRX).
+
+    ^IRX is quoted as an annual percentage (5.27 = 5.27%), so convert it to a
+    per-trading-day decimal rate.
+    """
+    annual_pct = download("^IRX", start, end)
+    return (annual_pct / 100 / 252).rename("CashRate")
+
+
 def synthetic(days=2520, seed=0, start="2015-01-02"):
     """Random-walk prices with alternating bull and bear regimes, for demos and tests."""
     rng = np.random.default_rng(seed)

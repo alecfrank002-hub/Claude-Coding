@@ -86,3 +86,33 @@ def test_all_rules_produce_valid_positions():
         pos = rule(close)
         assert pos.index.equals(close.index), name
         assert set(pos.unique()) <= {0, 1, 2}, name
+
+
+def test_rotation_exits_after_three_closes_below_sma():
+    from trading.portfolio import Settings, run_rotation
+
+    idx = pd.bdate_range("2020-01-01", periods=12)
+    up = [100 + i for i in range(8)]
+    a = pd.Series(up + [90, 88, 86, 84], index=idx, dtype=float)  # falls below its 3-day SMA
+    bench = pd.Series(100.0, index=idx)
+    prices = pd.DataFrame({"A": a})
+    settings = Settings(slots=1, window=3, rs_lookback=2, exit_days=3, cost_bps=0)
+    _, _, holdings = run_rotation(prices, bench, settings)
+    held = (holdings["A"] > 0).tolist()
+    assert held[7] is True
+    assert held[8] and held[9]  # first two closes below: still held
+    assert not held[10]  # third close below: sold
+
+
+def test_rotation_picks_strongest_name():
+    from trading.portfolio import Settings, run_rotation
+
+    idx = pd.bdate_range("2020-01-01", periods=10)
+    prices = pd.DataFrame({
+        "SLOW": [100 + i for i in range(10)],
+        "FAST": [100 + 3 * i for i in range(10)],
+    }, index=idx, dtype=float)
+    bench = pd.Series(100.0, index=idx)
+    _, _, holdings = run_rotation(prices, bench, Settings(slots=1, window=3, rs_lookback=2, cost_bps=0))
+    assert holdings["FAST"].iloc[-1] > 0
+    assert holdings["SLOW"].iloc[-1] == 0

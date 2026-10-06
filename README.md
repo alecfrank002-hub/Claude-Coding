@@ -49,6 +49,21 @@ annual return, with buy & hold included and `*` marking rules that beat it. Rule
 Cash earns the 13-week T-bill rate (`^IRX`). Borrowed money for 2x rules pays
 that rate plus 1% a year.
 
+## Relative-strength rotation (baskets)
+
+```bash
+python rotation.py                      # every basket in trading/baskets.py
+python rotation.py sectors large_caps   # just these baskets
+```
+
+Holds the top N names in a basket that are above their 50-day SMA and beating
+the market (return over the last 3 months minus SPY's or QQQ's). A holding is
+sold after **3 closes in a row below its 50-day**, or at the weekly check if its
+relative strength falls out of the basket's top 2N, and the slot rotates into
+the next strongest qualifying name. Results are compared with SPY, QQQ and an
+equal-weight hold of the same basket. Settings live in `trading/portfolio.py`
+(`Settings`); baskets live in `trading/baskets.py`.
+
 ## How the backtest works
 
 - Prices are split- and dividend-adjusted daily closes from Yahoo Finance, cached in `data/`.
@@ -64,7 +79,10 @@ that rate plus 1% a year.
 | --- | --- |
 | `run_backtest.py` | Command-line entry point |
 | `trading/data.py` | Downloading, caching, CSV loading, synthetic prices |
-| `compare_rules.py` | Runs all rules side by side |
+| `compare_rules.py` | Runs all single-ticker rules side by side |
+| `rotation.py` | Relative-strength rotation across baskets |
+| `trading/portfolio.py` | Rotation engine and equal-weight benchmark |
+| `trading/baskets.py` | Ticker baskets |
 | `trading/strategy.py` | Trading rules and the `RULES` list |
 | `trading/backtest.py` | Backtest engine, trade list, performance stats |
 | `trading/report.py` | Text summary and charts |

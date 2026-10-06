@@ -1,0 +1,158 @@
+"""Portfolio rotation backtest: hold the strongest stocks in a basket, rotate out of weakness.
+
+Every trading day, at the close:
+  1. Exit any holding that has closed below its 50-day SMA `exit_days` days in a row.
+  2. On the weekly check (last trading day of the week), also exit holdings whose
+     relative strength has dropped out of the top `2 * slots` of the basket.
+  3. Fill any empty slots with the highest-RS names that qualify:
+     above their 50-day SMA and beating the benchmark (RS > 0).
+
+Each slot gets 1/slots of the portfolio. Empty slots sit in cash and earn
+interest. Like the single-stock backtest, decisions made at today's close earn
+tomorrow's returns, and every buy and sell pays `cost_bps`.
+"""
+
+from dataclasses import dataclass
+
+import numpy as np
+import pandas as pd
+
+from .backtest import TRADING_DAYS, _stats
+from .strategy import sma
+
+
+@dataclass
+class Settings:
+    slots: int = 10  # how many names to hold at once
+    window: int = 50  # moving average length
+    exit_days: int = 3  # closes in a row below the SMA before selling
+    rs_lookback: int = 63  # relative strength period in trading days (~3 months)
+    require_rs: bool = True  # only buy names beating the benchmark
+    market_filter: bool = False  # only hold stocks while the benchmark's 50d > 200d
+    cost_bps: float = 5.0
+
+
+def _streak(flags):
+    """Count how many days in a row `flags` has been True (resets to 0 on False)."""
+    flags = flags.astype(int)
+    return flags.groupby((flags == 0).cumsum()).cumsum()
+
+
+def relative_strength(prices, benchmark, lookback=63):
+    """Each stock's return over `lookback` days minus the benchmark's return."""
+    stock_ret = prices / prices.shift(lookback) - 1
+    bench_ret = benchmark / benchmark.shift(lookback) - 1
+    return stock_ret.sub(bench_ret, axis=0)
+
+
+def run_rotation(prices, benchmark, settings=Settings(), cash_rate=None, start=None):
+    """Backtest the rotation strategy from `start`. `prices` has one column per ticker.
+
+    Pass full price history: indicators are computed on all of it, so they're
+    ready on day one instead of needing a warm-up period.
+    """
+    s = settings
+    prices = prices.reindex(benchmark.index)
+
+    avg = sma(prices, s.window)
+    below_streak = (prices < avg).apply(_streak)  # closes in a row below the SMA
+    rs = relative_strength(prices, benchmark, s.rs_lookback)
+    eligible = (prices > avg) & rs.notna()
+    if s.require_rs:
+        eligible &= rs > 0
+    rs_rank = rs.rank(axis=1, ascending=False)
+
+    if s.market_filter:
+        market_ok = (sma(benchmark, 50) > sma(benchmark, 200)).to_numpy()
+    else:
+        market_ok = np.ones(len(benchmark), dtype=bool)
+
+    keep = benchmark.index >= pd.Timestamp(start or benchmark.index[0])
+    benchmark, prices = benchmark[keep], prices[keep]
+    eligible, below_streak, rs, rs_rank = (x[keep] for x in (eligible, below_streak, rs, rs_rank))
+    market_ok = market_ok[keep]
+    n_days, n_names = prices.shape
+
+    week = benchmark.index.to_period("W")
+    weekly = np.append(week[1:] != week[:-1], True)
+
+    rets = prices.pct_change().fillna(0.0).to_numpy()
+    rate = np.zeros(n_days) if cash_rate is None else cash_rate.reindex(benchmark.index).ffill().fillna(0).to_numpy()
+    elig, streak, score, rank = (x.to_numpy() for x in (eligible, below_streak, rs.fillna(-np.inf), rs_rank))
+
+    w = np.zeros(n_names)  # fraction of the portfolio in each stock
+    cash = 1.0
+    daily_ret = np.zeros(n_days)
+    names_held = np.zeros(n_days)
+    weights = np.zeros((n_days, n_names))
+    traded = 0.0
+    cost = s.cost_bps / 10_000
+
+    for t in range(n_days):
+        # Overnight: holdings move with their prices, cash earns interest.
+        if t > 0:
+            w = w * (1 + rets[t])
+            cash = cash * (1 + rate[t])
+            total = w.sum() + cash
+            daily_ret[t] = total - 1
+            w, cash = w / total, cash / total
+
+        # At the close: decide what to sell.
+        held = w > 0
+        sell = held & (streak[t] >= s.exit_days)
+        if weekly[t]:
+            sell |= held & (rank[t] > 2 * s.slots)
+        if not market_ok[t]:
+            sell |= held
+        if sell.any():
+            cash += w[sell].sum() * (1 - cost)
+            traded += w[sell].sum()
+            w[sell] = 0.0
+
+        # Then fill empty slots with the strongest qualifying names.
+        open_slots = s.slots - int((w > 0).sum())
+        if open_slots > 0 and market_ok[t]:
+            candidates = np.where(elig[t] & (w == 0))[0]
+            for i in candidates[np.argsort(-score[t][candidates])][:open_slots]:
+                amount = min(1.0 / s.slots, cash)
+                if amount < 0.25 / s.slots:
+                    break
+                w[i] = amount * (1 - cost)
+                cash -= amount
+                traded += amount
+
+        names_held[t] = (w > 0).sum()
+        weights[t] = w
+
+    returns = pd.Series(daily_ret, index=benchmark.index)
+    years = n_days / TRADING_DAYS
+    metrics = _stats(returns) | {
+        "avg_names": names_held.mean(),
+        "invested": weights.sum(axis=1).mean(),
+        "turnover": traded / years,  # portfolio traded per year (1.0 = 100%)
+    }
+    holdings = pd.DataFrame(weights, index=benchmark.index, columns=prices.columns)
+    return returns, metrics, holdings
+
+
+def equal_weight(prices, start_index, cost_bps=5.0):
+    """Benchmark: hold every name in the basket in equal amounts, rebalanced monthly."""
+    prices = prices.reindex(start_index)
+    rets = prices.pct_change()
+    month = start_index.to_period("M")
+    rebalance = np.append(True, month[1:] != month[:-1])
+    w = None
+    out = np.zeros(len(start_index))
+    r = rets.fillna(0).to_numpy()
+    listed = prices.notna().to_numpy()
+    for t in range(len(start_index)):
+        if t > 0 and w is not None:
+            w = w * (1 + r[t])
+            out[t] = w.sum() - 1
+            w = w / w.sum()
+        if rebalance[t] and listed[t].any():
+            target = listed[t] / listed[t].sum()
+            if w is not None:
+                out[t] -= np.abs(target - w).sum() * cost_bps / 10_000
+            w = target.astype(float)
+    return pd.Series(out, index=start_index)

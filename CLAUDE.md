@@ -3,7 +3,7 @@
 Swing-trading research toolkit (Python, pandas). The user is a swing trader
 refining their edge and teaching Claude their rules.
 
-- **Read `STRATEGY.md` first.** It holds the user's trading rules and the backtest
+- **Read `RULEBOOK.md` and `STRATEGY.md` first.** RULEBOOK.md is the one-page summary of the rules. It holds the user's trading rules and the backtest
   findings so far; update it whenever a rule is added, changed or tested.
 - Run tests with `python -m pytest`. Price data comes from Yahoo Finance via
   yfinance and is cached in `data/` (not committed).

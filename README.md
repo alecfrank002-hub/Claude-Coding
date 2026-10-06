@@ -114,7 +114,8 @@ python daily_dashboard.py        # one-screen dashboard: SPY/QQQ weekly MACD, le
 | `trading/risk.py` | Risk gauge components (incl. weekly MACD, VIX, credit, breadth) and the leader gauge |
 | `trading/universe.py` | Whole-market download, leader scan, market-wide RS rating, leader environment |
 | `research_*.py` | Environment, stock-setup and combined-system studies |
-| `STRATEGY.md` | The trader's rules and findings |
+| `RULEBOOK.md` | One-page rulebook: every rule, its effect and evidence, daily routine |
+| `STRATEGY.md` | The trader's rules and full research findings |
 | `trading/strategy.py` | Trading rules and the `RULES` list |
 | `trading/backtest.py` | Backtest engine, trade list, performance stats |
 | `trading/report.py` | Text summary and charts |

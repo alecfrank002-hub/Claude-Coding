@@ -88,6 +88,8 @@ python research_macd.py          # test the weekly MACD (6,20,9) risk switch
 python daily_dashboard.py        # one-screen dashboard: SPY/QQQ weekly MACD, leader index, breadth
 ```
 
+The 50-day undercut & reclaim backtest lives in `pullback50/` (see `pullback50/README.md`).
+
 `trading/indicators.py` has the 10/20 EMA, 50/100/200 SMA, an IBD-style RS rating
 (1-99, ranked within the basket), MA score/stack and breadth.
 

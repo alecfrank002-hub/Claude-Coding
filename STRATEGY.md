@@ -148,11 +148,31 @@ Train 2008-18, test 2019-26; exposure 100% on / cash off.
   the index will let you do), with the leader index and leader breadth as the "are *my*
   stocks working?" check.
 
+### 50-day undercut & reclaim (`pullback50/`, Oct 2026)
+Signal: low < prior low and < 50 SMA, close > prior low and > 50 SMA. S&P 500 + Nasdaq-100 (today's
+members), 2015-2026, independent trades, 1% risk on $100k (25% cap), 0.1% slippage. Full tables in
+`pullback50/output/summary.md`, highlights in `pullback50/output/findings.md`.
+
+- 19 of 20 entry x stop x exit versions positive over all years; the 24% target versions lead at about
+  +0.38R per trade ($310-390), but hold 35-70 days on average and some for years.
+- Every version earned less per trade in 2025-26 than in 2023-24 (2025-26 is partly unfinished).
+- Close-below-20-EMA exit is weak (+0.02 to +0.06R): about a third of trades are out within 2 days because
+  the 20 EMA sits overhead right after a 50-day undercut.
+- Signals with SPY *below* its 50-day did better in 19 of 20 versions.
+- About half of all signals fell more than 7% within 60 days, and only ~5% of those later reached +24%:
+  supports a hard stop around 7-8%.
+- Entry B (buy stop over the signal high) didn't fill on 20% of eligible signals, and those were weaker
+  setups (56% fell more than 8% vs 43%).
+- RS proxy (12-month return percentile) is U-shaped in large caps: both extremes swing more both ways.
+- Signal-day-low stops can be cents wide; R averages for those versions are distorted (compare in $).
+
 ## Open questions / next tests
 - Trader's own entry triggers and exits (to come).
 - Dollar volume: $200M recommended (best results); $500-600M as the intraday/options shortlist.
 - Per-trade stops sized off ADR (high-ADR names need them; portfolio drawdowns are still ~30%).
 - Survivorship-free data (delisted stocks) for the scan.
+- 50-day reclaim: rerun finalists on a shared account; minimum stop distance for signal-low stops; time
+  limit on 24% target trades; SPY-below-50d and ATR/volatility filters.
 - Position sizing by volatility; leverage only in the "in" environment.
 - Stops and profit targets at the trade level (these backtests use rule exits only).
 - Intraday/options behavior can't be tested with daily data; needs intraday data.

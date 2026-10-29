@@ -6,3 +6,7 @@ data/*.csv
 charts/
 .env
 data/universe/
+pullback50/cache/
+pullback50/output/trades.csv
+pullback50/output/skipped.csv
+pullback50/output/signals.csv
